@@ -7,16 +7,19 @@
 #include <RF24.h>
 #include "SPI.h"
 #include <cstdint>
-
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <algorithm> 
 #define SPI_SPEED           1000000
 
 #if defined(ESP32)
     #define PIN_CS          5
     #define PIN_CE          4
     #define PIN_IRQ         16
-    #define PIN_MISO        12
-    #define PIN_MOSI        13
-    #define PIN_SCLK        14
+    #define PIN_MISO        19
+    #define PIN_MOSI        23
+    #define PIN_SCLK        18
 #else
     #define PIN_CS          15
     #define PIN_CE          0
@@ -38,9 +41,8 @@
 } while (0)
 
 /***** CONFIGURATION *****************************/
-// at least the dtu ID needs to be adjusted to your DTUs ID (for Ahoy it can be read from 'system' page)
-uint64_t invId = 0x4433221101ULL; //0x116111223344ULL;
-uint64_t dtu   = 0x7604948801ULL; // ESP32
+std::string inverter_id = "116111223344"; // example inverter needs to be added to dtu
+std::string dtu_serialnumber = "199980124242"; // using openDTU the id can be found under <UrlToDtu>/settings/dtu
 /*************************************************/
 
 bool gotIrq;
@@ -62,10 +64,36 @@ bool mRetransmit = false;
 uint8_t mSendCnt = 0;
 
 uint16_t mAcPower = 0;
+uint16_t counter = 0;
 
 uint8_t gotRx = 0;
 uint32_t mMillis = millis();
 
+// will be filled in Setup() method
+uint64_t invId = 0;
+uint64_t dtu   = 0;
+
+
+uint64_t convertSerialNumber(const std::string& serialNumber) {
+    if (serialNumber.length() < 8) {
+        std::cerr << "Serial number too short." << std::endl;
+        return 0;
+    }
+
+    // Extract the last 8 characters (last 4 bytes)
+    std::string last4Bytes = serialNumber.substr(serialNumber.length() - 8);
+    std::reverse(last4Bytes.begin(), last4Bytes.end());
+    // Reverse the bytes and add "01" at the end
+    std::string converted = last4Bytes + "01";
+
+    // Convert the string to uint64_t
+    std::stringstream ss;
+    ss << std::hex << converted;
+    uint64_t result;
+    ss >> result;
+
+    return result;
+}
 void write();
 
 IRAM_ATTR void handleIntr(void) {
@@ -169,8 +197,10 @@ void dumpBuf(uint8_t buf[], uint8_t len) {
     }
     Serial.println("");
 }
-
+#ifndef UNIT_TEST
 void setup() {
+    invId = convertSerialNumber(inverter_id);
+    dtu = convertSerialNumber(dtu_serialnumber);
     Serial.begin(115200);
     while (!Serial)
         yield();
@@ -212,7 +242,6 @@ void setup() {
     } else
         Serial.println("NRF24 can't be reached");
 }
-
 void loop() {
     if(gotIrq) {
         gotIrq = false;
@@ -271,12 +300,12 @@ void loop() {
                 Serial.print("TX ");
                 dumpBuf(send, 27);
             }
-            Serial.println("----------------------------");
+
 
             if(0 == gotRx) {
                 mNrf24.setChannel(61);
                 mNrf24.startListening();
-            }
+             }
 
             mRetransmit = false;
         }
@@ -289,5 +318,9 @@ void loop() {
             mRxCh = (mRxCh + 1) % 5;
             mNrf24.setChannel(mChList[mRxCh]);
         }
+        
+        Serial.println("---------------------------- " + String(counter++));
+
     }
 }
+#endif
