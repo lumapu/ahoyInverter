@@ -40,7 +40,7 @@
 /***** CONFIGURATION *****************************/
 // at least the dtu ID needs to be adjusted to your DTUs ID (for Ahoy it can be read from 'system' page)
 uint64_t invId = 0x4433221101ULL; //0x116111223344ULL;
-uint64_t dtu   = 0x7604948801ULL; // ESP32
+uint64_t dtu   = 0x6d57538301ULL; // ESP32 8353576d
 /*************************************************/
 
 bool gotIrq;
@@ -51,7 +51,7 @@ uint8_t mRxLen;
 uint8_t mRxBuf[MAX_RF_PAYLOAD_SIZE];
 uint8_t mTxBuf[4][MAX_RF_PAYLOAD_SIZE];
 uint8_t mTxChIdx = 0;
-uint8_t mTxCh[] = {23, 3, 3, 3, 3};
+uint8_t mTxCh[] = {3, 40, 40, 40, 40};
 uint8_t mTxMs[] = {44, 41, 52, 48};
 
 uint8_t mRxCh = 0;

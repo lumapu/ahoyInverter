@@ -1,7 +1,7 @@
 # Quick 'n Dirty (Hoymiles) Inverter simulator
 
 ## Intended use
-This firmware was written to test [AhoyDTU](https://github.com/lumapu/ahoy). It has only basic implementation isn't compareable to a real inverter hardware. Due too much dark hours in winter time (Europe) it can be used to test functionality during night time.
+This firmware was written to test [AhoyDTU](https://github.com/lumapu/ahoy). It has only basic implementation and isn't compareable to a real inverter hardware. Due too much dark hours in winter time (Europe) it can be used to test functionality during night time.
 
 ## Overview
 For now only a 4 channel inverter will simulated.
