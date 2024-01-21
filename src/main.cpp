@@ -67,7 +67,8 @@ uint32_t mMillis = millis();
 
 // will be filled in Setup() method
 uint64_t invId = 0;
-uint64_t dtu   = 0;
+uint64_t dtu   = 0; // the ID will be read of the received data - this "inverter" 
+                    // can be read from multiple inverters from now on (without change)
 
 
 uint64_t convertSerialNumber(const std::string& serialNumber) {
@@ -319,7 +320,7 @@ void loop() {
             mRxCh = (mRxCh + 1) % 5;
             mNrf24.setChannel(mChList[mRxCh]);
         }
-        
+
         //Serial.println("---------------------------- " + String(counter++));
     }
 }
