@@ -31,6 +31,20 @@
 #define CRC8_POLY               0x01
 #define CRC16_MODBUS_POLYNOM    0xA001
 
+typedef enum {
+    TurnOn                  = 0,  // 0x00
+    TurnOff                 = 1,  // 0x01
+    Restart                 = 2,  // 0x02
+    Lock                    = 3,  // 0x03
+    Unlock                  = 4,  // 0x04
+    ActivePowerContr        = 11, // 0x0b
+    ReactivePowerContr      = 12, // 0x0c
+    PFSet                   = 13, // 0x0d
+    CleanState_LockAndAlarm = 20, // 0x14
+    SelfInspection          = 40, // 0x28, self-inspection of grid-connected protection files
+    Init                    = 0xff
+} DevControlCmdType;
+
 #define CP_U32_BigEndian(buf, v) do { \
     uint8_t *b = buf; \
     b[3] = ((v >> 24) & 0xff); \
@@ -49,7 +63,7 @@ uint8_t mRxLen;
 uint8_t mRxBuf[MAX_RF_PAYLOAD_SIZE];
 uint8_t mTxBuf[4][MAX_RF_PAYLOAD_SIZE];
 uint8_t mTxChIdx = 0;
-uint8_t mTxCh[] = {3, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40};
+uint8_t mTxCh[] = {23, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40};
 uint8_t mTxMs[] = {36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36};
 
 uint8_t mRxCh = 0;
@@ -61,6 +75,7 @@ uint8_t mSendCnt = 0;
 
 uint16_t mAcPower = 0;
 uint16_t counter = 0;
+uint16_t mPowerLimit = 8000; // 800.0W
 
 uint8_t gotRx = 0;
 uint32_t mMillis = millis();
@@ -141,10 +156,30 @@ uint8_t initPayload(uint8_t cmd) {
         mTxBuf[3][10+2]  = (mAcPower >> 8) & 0xff; // AC Power
         mTxBuf[3][10+3]  = (mAcPower     ) & 0xff; // AC Power
         mAcPower++;
-        mTxBuf[0][10+12] = mRxBuf[12]; // Yield Total CH1
-        mTxBuf[0][10+13] = mRxBuf[13]; // Yield Total CH1
-        mTxBuf[0][10+14] = mRxBuf[14]; // Yield Total CH1
-        mTxBuf[0][10+15] = mRxBuf[15]; // Yield Total CH1
+        
+        // 123.456
+        mTxBuf[0][10+12] = 0x00; // Yield Total CH1
+        mTxBuf[0][10+13] = 0x01; // Yield Total CH1
+        mTxBuf[0][10+14] = 0xe2; // Yield Total CH1
+        mTxBuf[0][10+15] = 0x40; // Yield Total CH1
+
+        // 132.567
+        mTxBuf[0][10+16] = 0x00; // Yield Total CH2
+        mTxBuf[0][10+17] = 0x02; // Yield Total CH2
+        mTxBuf[0][10+18] = 0x05; // Yield Total CH2
+        mTxBuf[0][10+19] = 0xd7; // Yield Total CH2
+
+        // 61.447
+        mTxBuf[0][10+34] = 0x00; // Yield Total CH3
+        mTxBuf[0][10+35] = 0x00; // Yield Total CH3
+        mTxBuf[0][10+36] = 0xf0; // Yield Total CH3
+        mTxBuf[0][10+37] = 0x07; // Yield Total CH3
+
+        // 47.777
+        mTxBuf[0][10+38] = 0x00; // Yield Total CH4
+        mTxBuf[0][10+39] = 0x00; // Yield Total CH4
+        mTxBuf[0][10+40] = 0xba; // Yield Total CH4
+        mTxBuf[0][10+41] = 0xal; // Yield Total CH4
 
         for(uint8_t i = 0; i < 4; i++) {
             if(3 == i) {
@@ -180,8 +215,9 @@ uint8_t initPayload(uint8_t cmd) {
         mTxBuf[0][13] = 0x17;
     } else if(0x05 == cmd) { // System Config
         initPacket(invId, mTxBuf[0], 0x95, 0x81);
-        mTxBuf[0][12] = 0x03;
-        mTxBuf[0][13] = 0xe8;
+        uint16_t limitPct = mPowerLimit / 12000;
+        mTxBuf[0][12] = (limitPct >> 8) & 0xff;
+        mTxBuf[0][13] = (limitPct) & 0xff;
     } else
         Serial.println("unkown command: " + String(cmd));
 
@@ -190,6 +226,36 @@ uint8_t initPayload(uint8_t cmd) {
     mTxBuf[0][25] = (mCrc     ) & 0xff;
     mTxBuf[0][26] = crc8(mTxBuf[0], 26);
     return 1; // number of frames
+}
+
+uint8_t initCtrlPayload(uint8_t cmd) {
+    uint8_t payloadLen = 4;
+    if(ActivePowerContr == cmd) {
+        mPowerLimit = (mRxBuf[12] << 8) | mRxBuf[13];
+        Serial.println("got Power limit " + String(mPowerLimit / 10.0) + "W");
+        initPacket(invId, mTxBuf[0], 0xD1, 0x81);
+        mTxBuf[0][12] = cmd;
+    } else if(TurnOn == cmd) {
+        Serial.println("Turn on");
+        initPacket(invId, mTxBuf[0], 0xD1, 0x81);
+        mTxBuf[0][12] = cmd;
+    } else if(TurnOff == cmd) {
+        Serial.println("Turn off");
+        initPacket(invId, mTxBuf[0], 0xD1, 0x81);
+        mTxBuf[0][12] = cmd;
+    } else if(Restart == cmd) {
+        initPacket(invId, mTxBuf[0], 0xD1, 0x81);
+        mTxBuf[0][12] = cmd;
+        ESP.restart();
+    } else
+        Serial.println("unkown command: " + String(cmd));
+
+    mCrc = crc16(&mTxBuf[0][10], payloadLen, mCrc);
+    mTxBuf[0][10+payloadLen] = (mCrc >> 8) & 0xff;
+    mTxBuf[0][11+payloadLen] = (mCrc     ) & 0xff;
+    mTxBuf[0][12+payloadLen] = crc8(mTxBuf[0], 12+payloadLen);
+
+    return 1;
 }
 
 void dumpBuf(uint8_t buf[], uint8_t len) {
@@ -223,7 +289,7 @@ void setup() {
 #endif
 
     mNrf24.begin(mSpi, PIN_CE, PIN_CS);
-    mNrf24.setRetries(1, 1); // 3*250us + 250us and 15 loops -> 15ms
+    mNrf24.setRetries(3, 15); // 3*250us + 250us and 15 loops -> 15ms
 
     mNrf24.setChannel(61);
     mNrf24.startListening();
@@ -258,7 +324,7 @@ void loop() {
                     mNrf24.read(mRxBuf, mRxLen);
 
                 mCrc = 0xffff; // reset CRC
-                mMillis = millis() + 40;
+                mMillis = millis() + 20;
                 mSendCnt = 0;
                 mTxChIdx = 0;
                 //RX 15 11 22 33 44 83 53 57 6d 82 39 
@@ -267,8 +333,11 @@ void loop() {
                 if(mRxLen == 27)
                     gotRx = initPayload(mRxBuf[10]);
                 else {
+                    if(mRxBuf[0] == 0x51)
+                        gotRx = initCtrlPayload(mRxBuf[10]);
+                    else
+                        gotRx = 0;
                     mRetransmit = true;
-                    gotRx = 1;
                 }
             }
         }
@@ -276,15 +345,18 @@ void loop() {
         gotRx--;
 
         uint8_t *send = mTxBuf[mSendCnt];
-        if(mRetransmit)
-            send = mTxBuf[(mRxBuf[9] & 0x7f)-1];
-        
-        mNrf24.stopListening();
-        mNrf24.setChannel(mTxCh[mTxChIdx++]);
-        mNrf24.openWritingPipe(reinterpret_cast<uint8_t*>(&dtu));
-        mNrf24.write(send, 27, false); // false = request ACK response
-        mMillis = millis() + mTxMs[mSendCnt]; //millis() + 40; // 
-        mSendCnt++;
+        if(255 != gotRx) {
+            if(mRetransmit)
+                send = mTxBuf[(mRxBuf[9] & 0x7f)-1];
+            
+            mNrf24.stopListening();
+            mNrf24.setChannel(mTxCh[mTxChIdx++]);
+            mNrf24.openWritingPipe(reinterpret_cast<uint8_t*>(&dtu));
+            mNrf24.write(send, 27, false); // false = request ACK response
+            mMillis = millis() + mTxMs[mSendCnt]; //millis() + 40; // 
+            mSendCnt++;
+        } else
+            gotRx = 0;
 
         if(0 == gotRx) {
             Serial.print("RX ");
