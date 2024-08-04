@@ -62,9 +62,10 @@ RF24 mNrf24;
 uint8_t mRxLen;
 uint8_t mRxBuf[MAX_RF_PAYLOAD_SIZE];
 uint8_t mTxBuf[4][MAX_RF_PAYLOAD_SIZE];
-uint8_t mTxChIdx = 0;
-uint8_t mTxCh[] = {23, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40};
+uint8_t mTxCh[] = {3, 3, 3, 3, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40};
 uint8_t mTxMs[] = {36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36};
+uint16_t mTxSendMs[30];
+uint32_t mStart;
 
 uint8_t mRxCh = 0;
 uint8_t mChList[5] = {03, 23, 40, 61, 75};
@@ -156,6 +157,23 @@ uint8_t initPayload(uint8_t cmd) {
         mTxBuf[3][10+2]  = (mAcPower >> 8) & 0xff; // AC Power
         mTxBuf[3][10+3]  = (mAcPower     ) & 0xff; // AC Power
         mAcPower++;
+
+        // 41.8V
+        mTxBuf[0][10+2] = 0x01; // Voltage CH1
+        mTxBuf[0][10+3] = 0xa2; // Voltage CH1
+        // 8.49A
+        mTxBuf[0][10+4] = 0x03; // Current CH1
+        mTxBuf[0][10+5] = 0x51; // Current CH1
+        //354.9W
+        mTxBuf[0][10+8] = 0x0d; // DC Power CH1
+        mTxBuf[0][10+9] = 0xdd; // DC Power CH1
+
+        //8.20A
+        mTxBuf[0][10+6] = 0x03; // Current CH2
+        mTxBuf[0][10+7] = 0x34; // Current CH2
+        //342.8W
+        mTxBuf[0][10+10] = 0x0d; // DC Power CH2
+        mTxBuf[0][10+11] = 0x64; // DC Power CH2
         
         // 123.456
         mTxBuf[0][10+12] = 0x00; // Yield Total CH1
@@ -164,22 +182,26 @@ uint8_t initPayload(uint8_t cmd) {
         mTxBuf[0][10+15] = 0x40; // Yield Total CH1
 
         // 132.567
-        mTxBuf[0][10+16] = 0x00; // Yield Total CH2
-        mTxBuf[0][10+17] = 0x02; // Yield Total CH2
-        mTxBuf[0][10+18] = 0x05; // Yield Total CH2
-        mTxBuf[0][10+19] = 0xd7; // Yield Total CH2
+        mTxBuf[1][10+0] = 0x00; // Yield Total CH2
+        mTxBuf[1][10+1] = 0x02; // Yield Total CH2
+        mTxBuf[1][10+2] = 0x05; // Yield Total CH2
+        mTxBuf[1][10+3] = 0xd7; // Yield Total CH2
+
+        // 381.4W
+        mTxBuf[2][10+0] = 0x0e; // DC Power CH4
+        mTxBuf[2][10+1] = 0xe6; // DC Power CH4
 
         // 61.447
-        mTxBuf[0][10+34] = 0x00; // Yield Total CH3
-        mTxBuf[0][10+35] = 0x00; // Yield Total CH3
-        mTxBuf[0][10+36] = 0xf0; // Yield Total CH3
-        mTxBuf[0][10+37] = 0x07; // Yield Total CH3
+        mTxBuf[2][10+2] = 0x00; // Yield Total CH3
+        mTxBuf[2][10+3] = 0x00; // Yield Total CH3
+        mTxBuf[2][10+4] = 0xf0; // Yield Total CH3
+        mTxBuf[2][10+5] = 0x07; // Yield Total CH3
 
         // 47.777
-        mTxBuf[0][10+38] = 0x00; // Yield Total CH4
-        mTxBuf[0][10+39] = 0x00; // Yield Total CH4
-        mTxBuf[0][10+40] = 0xba; // Yield Total CH4
-        mTxBuf[0][10+41] = 0xal; // Yield Total CH4
+        mTxBuf[2][10+6] = 0x00; // Yield Total CH4
+        mTxBuf[2][10+7] = 0x00; // Yield Total CH4
+        mTxBuf[2][10+8] = 0xba; // Yield Total CH4
+        mTxBuf[2][10+9] = 0xal; // Yield Total CH4
 
         for(uint8_t i = 0; i < 4; i++) {
             if(3 == i) {
@@ -324,9 +346,9 @@ void loop() {
                     mNrf24.read(mRxBuf, mRxLen);
 
                 mCrc = 0xffff; // reset CRC
-                mMillis = millis() + 20;
+                mMillis = millis() + 30;
+                mStart = millis();
                 mSendCnt = 0;
-                mTxChIdx = 0;
                 //RX 15 11 22 33 44 83 53 57 6d 82 39 
                 dtu = (mRxBuf[8] << 24) | (mRxBuf[7] << 16) | (mRxBuf[6] << 8) | (mRxBuf[5]);
                 dtu = (dtu << 8) | 0x01;
@@ -350,9 +372,10 @@ void loop() {
                 send = mTxBuf[(mRxBuf[9] & 0x7f)-1];
             
             mNrf24.stopListening();
-            mNrf24.setChannel(mTxCh[mTxChIdx++]);
+            mNrf24.setChannel(mTxCh[mSendCnt]);
             mNrf24.openWritingPipe(reinterpret_cast<uint8_t*>(&dtu));
             mNrf24.write(send, 27, false); // false = request ACK response
+            mTxSendMs[mSendCnt] = millis() - mStart;
             mMillis = millis() + mTxMs[mSendCnt]; //millis() + 40; // 
             mSendCnt++;
         } else
@@ -368,13 +391,21 @@ void loop() {
                         Serial.print("0");
                     Serial.print(String(mTxCh[i]));
                     Serial.print(" ");
+                    Serial.print(mTxSendMs[i]);
+                    Serial.print("ms ");
                     dumpBuf(mTxBuf[i], 27);
                 }
             } else {
-                Serial.print("TX ");
-                dumpBuf(send, 27);
+                Serial.print("TX CH");
+                    if(mTxCh[0] < 10)
+                        Serial.print("0");
+                    Serial.print(String(mTxCh[0]));
+                    Serial.print(" ");
+                    Serial.print(mTxSendMs[0]);
+                    Serial.print("ms ");
+                dumpBuf(mTxBuf[0], 27);
             }
-
+            Serial.println();
 
             if(0 == gotRx) {
                 mNrf24.setChannel(61);
